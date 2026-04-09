@@ -17,6 +17,30 @@ export default function PreviewCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
+  // Calculate canvas dimensions for zoom styling
+  const beadSize = 20;
+  const maxX = pixelatedData && pixelatedData.length > 0 ? Math.max(...pixelatedData.map(p => p.x)) : 0;
+  const maxY = pixelatedData && pixelatedData.length > 0 ? Math.max(...pixelatedData.map(p => p.y)) : 0;
+  const canvasWidth = pixelatedData && pixelatedData.length > 0 ? (maxX + 1) * beadSize : 0;
+  const canvasHeight = pixelatedData && pixelatedData.length > 0 ? (maxY + 1) * beadSize : 0;
+
+  // Handle wheel zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        setScale(s => Math.min(Math.max(s + delta, 0.1), 5));
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
   // Render the pixel data onto the canvas
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,18 +49,12 @@ export default function PreviewCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx || pixelatedData.length === 0) return;
 
-    // Define bead size for drawing
-    const beadSize = 20; 
-
     // Set canvas dimension based on actual data bounds instead of target settings
     // to support transparent/irregular bounding boxes
-    const maxX = Math.max(...pixelatedData.map(p => p.x));
-    const maxY = Math.max(...pixelatedData.map(p => p.y));
-    
     // We only render what exists in pixelatedData (which ignores transparent pixels)
     // Add +1 because indices are 0-based
-    canvas.width = (maxX + 1) * beadSize;
-    canvas.height = (maxY + 1) * beadSize;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -139,21 +157,26 @@ export default function PreviewCanvas() {
       {/* Canvas Container */}
       <div 
         ref={containerRef}
-        className="flex-1 overflow-auto flex items-center justify-center p-10 custom-scrollbar relative bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACVJREFUKFNjZCASMDKgA2NjY/wPZhPVI0bCqH4UDeMQHQQA96QIQ3R8/BwAAAABJRU5ErkJggg==')] bg-repeat"
+        className="flex-1 overflow-auto custom-scrollbar relative bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACVJREFUKFNjZCASMDKgA2NjY/wPZhPVI0bCqH4UDeMQHQQA96QIQ3R8/BwAAAABJRU5ErkJggg==')] bg-repeat"
       >
-        {pixelatedData ? (
-          <div 
-            className="transition-transform origin-center shadow-2xl rounded-sm bg-white"
-            style={{ transform: `scale(${scale})` }}
-          >
-            <canvas ref={canvasRef} className="block max-w-none" />
-          </div>
-        ) : (
-          <div className="text-zinc-400 flex flex-col items-center gap-3 bg-white/80 backdrop-blur px-8 py-6 rounded-2xl border border-zinc-200 shadow-sm">
-            <span className="text-4xl">🎨</span>
-            <p className="font-medium">请先在左侧上传并生成图纸</p>
-          </div>
-        )}
+        <div className="min-w-max min-h-max w-full h-full flex items-center justify-center p-4 lg:p-10">
+          {pixelatedData ? (
+            <div 
+              className="shadow-2xl rounded-sm bg-white origin-top-left"
+              style={{ 
+                width: `${canvasWidth * scale}px`, 
+                height: `${canvasHeight * scale}px` 
+              }}
+            >
+              <canvas ref={canvasRef} className="block w-full h-full pointer-events-none" />
+            </div>
+          ) : (
+            <div className="text-zinc-400 flex flex-col items-center gap-3 bg-white/80 backdrop-blur px-8 py-6 rounded-2xl border border-zinc-200 shadow-sm">
+              <span className="text-4xl">🎨</span>
+              <p className="font-medium">请先在左侧上传并生成图纸</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
