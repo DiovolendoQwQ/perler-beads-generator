@@ -107,7 +107,7 @@ export default function PreviewCanvas() {
   return (
     <div className="flex flex-col h-full bg-zinc-50 relative rounded-2xl overflow-hidden group">
       {/* Toolbar */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm border border-zinc-200 shadow-sm rounded-full px-4 py-2 flex items-center gap-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm border border-zinc-200 shadow-sm rounded-full px-3 py-1.5 lg:px-4 lg:py-2 flex items-center gap-2 lg:gap-4 z-10 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity shadow-md lg:shadow-sm w-[max-content]">
         <button 
           onClick={() => setShowGrid(!showGrid)}
           className={`p-2 rounded-full transition-colors ${showGrid ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-100 text-zinc-600'}`}

@@ -50,7 +50,7 @@ export default function UploadPanel() {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-5 flex flex-col gap-6">
+    <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-4 lg:p-5 flex flex-col gap-4 lg:gap-6 shrink-0">
       <div>
         <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
           <Settings2 className="w-5 h-5 text-zinc-500" />
