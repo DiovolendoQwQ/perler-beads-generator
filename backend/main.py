@@ -9,6 +9,17 @@ import base64
 import numpy as np
 import cv2
 
+import traceback
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger("cartoonize")
+
 app = FastAPI(title="Cartoonize API")
 
 app.add_middleware(
@@ -71,38 +82,57 @@ def process_hq_cartoonize(img):
     return cartoon
 
 def simulate_diffusion_task(task_id: str, image_base64: str):
-    mock_tasks[task_id] = {"status": "PROCESSING", "progress": 0, "result": None}
+    logger.info(f"Task {task_id}: Started high-quality cartoonization")
+    mock_tasks[task_id] = {"status": "PROCESSING", "progress": 0, "result": None, "error": None}
     total_steps = 10
     
     try:
+        logger.info(f"Task {task_id}: Decoding base64 image")
         img = base64_to_cv2(image_base64)
         
         for step in range(total_steps):
             time.sleep(0.5) # Simulate GPU processing time (Wait 5s total)
             progress = int(((step + 1) / total_steps) * 100)
             mock_tasks[task_id]["progress"] = progress
+            if progress % 20 == 0:  # Log every 20%
+                logger.info(f"Task {task_id}: Processing... {progress}%")
             
+        logger.info(f"Task {task_id}: Applying OpenCV stylization filters")
         result_img = process_hq_cartoonize(img)
+        
+        logger.info(f"Task {task_id}: Encoding result to base64")
         result_base64 = cv2_to_base64(result_img)
         
         mock_tasks[task_id]["status"] = "COMPLETED"
         mock_tasks[task_id]["result"] = result_base64
+        logger.info(f"Task {task_id}: Completed successfully")
+        
     except Exception as e:
-        print(f"Task failed: {e}")
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        logger.error(f"Task {task_id}: FAILED with error: {error_msg}\n{error_trace}")
         mock_tasks[task_id]["status"] = "FAILED"
+        mock_tasks[task_id]["error"] = error_msg
 
 @app.post("/api/cartoonize/fast")
 async def cartoonize_fast(req: ImageRequest):
     """
     Uses OpenCV to perform a real fast cartoonization.
     """
+    logger.info("Received FAST cartoonize request")
     try:
+        start_time = time.time()
         img = base64_to_cv2(req.image_base64)
         result_img = process_fast_cartoonize(img)
         result_base64 = cv2_to_base64(result_img)
+        elapsed = time.time() - start_time
+        logger.info(f"FAST cartoonize completed successfully in {elapsed:.2f} seconds")
         return {"result": result_base64}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        logger.error(f"FAST cartoonize FAILED with error: {error_msg}\n{error_trace}")
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.post("/api/cartoonize/high-quality")
 async def cartoonize_high_quality(req: ImageRequest, background_tasks: BackgroundTasks):
@@ -111,7 +141,8 @@ async def cartoonize_high_quality(req: ImageRequest, background_tasks: Backgroun
     but performs an actual HQ cartoonization using OpenCV.
     """
     task_id = str(uuid.uuid4())
-    mock_tasks[task_id] = {"status": "PENDING", "progress": 0, "result": None}
+    logger.info(f"Received HIGH-QUALITY cartoonize request, generated Task ID: {task_id}")
+    mock_tasks[task_id] = {"status": "PENDING", "progress": 0, "result": None, "error": None}
     
     threading.Thread(target=simulate_diffusion_task, args=(task_id, req.image_base64)).start()
     return {"task_id": task_id}

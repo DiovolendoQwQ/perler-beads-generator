@@ -27,7 +27,9 @@ export default function UploadPanel() {
     cartoonizeStatus,
     setCartoonizeStatus
   } = useAppStore();
-  
+
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -37,6 +39,7 @@ export default function UploadPanel() {
       reader.onload = (event) => {
         setOriginalImage(event.target?.result as string);
         setPixelatedData(null); // Reset when new image uploaded
+        setErrorMessage(null); // Clear errors
       };
       reader.readAsDataURL(file);
     }
@@ -46,7 +49,8 @@ export default function UploadPanel() {
     if (!originalImage || isCartoonizing) return;
     setIsCartoonizing(true);
     setCartoonizeStatus('快速处理中...');
-    
+    setErrorMessage(null);
+
     try {
       const res = await fetch('/api/cartoonize/fast', {
         method: 'POST',
@@ -54,10 +58,13 @@ export default function UploadPanel() {
         body: JSON.stringify({ image_base64: originalImage })
       });
       const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.detail || '快速处理请求失败');
+      }
+      
       if (data.result) {
         setOriginalImage(data.result);
-        
-        // Auto process the image to show updated preview
         const currentPalette = palettes[selectedBrand] || palettes['Mard'];
         const result = await processImage(data.result, scalePercentage, useDithering, currentPalette);
         if (result) {
@@ -67,9 +74,9 @@ export default function UploadPanel() {
           setTargetHeight(result.height);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('极速版请求失败');
+      setErrorMessage(`极速版处理失败: ${err.message || '未知错误'}`);
     } finally {
       setIsCartoonizing(false);
       setCartoonizeStatus('');
@@ -81,6 +88,7 @@ export default function UploadPanel() {
     setIsCartoonizing(true);
     setCartoonizeProgress(0);
     setCartoonizeStatus('排队中...');
+    setErrorMessage(null);
 
     try {
       const res = await fetch('/api/cartoonize/high-quality', {
@@ -89,14 +97,19 @@ export default function UploadPanel() {
         body: JSON.stringify({ image_base64: originalImage })
       });
       const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.detail || '高清版请求失败');
+      }
+      
       const taskId = data.task_id;
 
       if (taskId) {
         pollTaskStatus(taskId);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('高清版请求失败');
+      setErrorMessage(`高清版处理失败: ${err.message || '未知错误'}`);
       setIsCartoonizing(false);
       setCartoonizeStatus('');
     }
@@ -107,6 +120,10 @@ export default function UploadPanel() {
       const res = await fetch(`/api/tasks/${taskId}`);
       const data = await res.json();
       
+      if (!res.ok) {
+        throw new Error(data.detail || '获取任务状态失败');
+      }
+
       setCartoonizeStatus(data.status === 'PROCESSING' ? '生成中...' : '排队中...');
       setCartoonizeProgress(data.progress || 0);
 
@@ -128,16 +145,16 @@ export default function UploadPanel() {
         setCartoonizeStatus('');
         setCartoonizeProgress(0);
       } else if (data.status === 'FAILED') {
-        alert('处理失败');
+        setErrorMessage(`后台处理失败: ${data.error || '未知错误'}`);
         setIsCartoonizing(false);
         setCartoonizeStatus('');
       } else {
         // Poll again after 1s
         setTimeout(() => pollTaskStatus(taskId), 1000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('轮询进度失败');
+      setErrorMessage(`轮询进度失败: ${err.message || '网络连接中断'}`);
       setIsCartoonizing(false);
       setCartoonizeStatus('');
     }
@@ -190,6 +207,14 @@ export default function UploadPanel() {
             className="hidden" 
           />
         </div>
+
+        {/* Error Message Area */}
+        {errorMessage && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-600">
+            <span className="font-bold shrink-0 mt-0.5">⚠️</span>
+            <p className="break-words">{errorMessage}</p>
+          </div>
+        )}
 
         {/* Cartoonize Styles Area */}
         {originalImage && (
