@@ -20,6 +20,11 @@ interface AppState {
   showGrid: boolean;
   showCodes: boolean;
   
+  // Cartoonization state
+  isCartoonizing: boolean;
+  cartoonizeProgress: number;
+  cartoonizeStatus: string;
+  
   setOriginalImage: (url: string | null) => void;
   setTargetWidth: (width: number) => void;
   setTargetHeight: (height: number) => void;
@@ -30,6 +35,10 @@ interface AppState {
   setBeadCounts: (counts: Record<string, number>) => void;
   setShowGrid: (show: boolean) => void;
   setShowCodes: (show: boolean) => void;
+  
+  setIsCartoonizing: (isCartoonizing: boolean) => void;
+  setCartoonizeProgress: (progress: number) => void;
+  setCartoonizeStatus: (status: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -43,6 +52,9 @@ export const useAppStore = create<AppState>((set) => ({
   beadCounts: {},
   showGrid: true,
   showCodes: true,
+  isCartoonizing: false,
+  cartoonizeProgress: 0,
+  cartoonizeStatus: '',
   
   setOriginalImage: (url) => set({ originalImage: url }),
   setTargetWidth: (width) => set({ targetWidth: width }),
@@ -54,4 +66,8 @@ export const useAppStore = create<AppState>((set) => ({
   setBeadCounts: (counts) => set({ beadCounts: counts }),
   setShowGrid: (show) => set({ showGrid: show }),
   setShowCodes: (show) => set({ showCodes: show }),
+  
+  setIsCartoonizing: (isCartoonizing) => set({ isCartoonizing }),
+  setCartoonizeProgress: (progress) => set({ cartoonizeProgress: progress }),
+  setCartoonizeStatus: (status) => set({ cartoonizeStatus: status }),
 }));

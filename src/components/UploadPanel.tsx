@@ -1,5 +1,5 @@
-import React, { useRef, ChangeEvent } from 'react';
-import { Upload, Settings2, Image as ImageIcon, Grid3X3, Palette, Type, Maximize, Sparkles } from 'lucide-react';
+import React, { useRef, ChangeEvent, useState } from 'react';
+import { Upload, Settings2, Image as ImageIcon, Grid3X3, Palette, Type, Maximize, Sparkles, Wand2, Zap } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { palettes } from '../data/palettes';
 import { processImage } from '../utils/imageProcessor';
@@ -19,7 +19,13 @@ export default function UploadPanel() {
     selectedBrand, 
     setSelectedBrand,
     setPixelatedData,
-    setBeadCounts
+    setBeadCounts,
+    isCartoonizing,
+    setIsCartoonizing,
+    cartoonizeProgress,
+    setCartoonizeProgress,
+    cartoonizeStatus,
+    setCartoonizeStatus
   } = useAppStore();
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,14 +36,95 @@ export default function UploadPanel() {
       const reader = new FileReader();
       reader.onload = (event) => {
         setOriginalImage(event.target?.result as string);
-        // Automatically process image after upload if needed
+        setPixelatedData(null); // Reset when new image uploaded
       };
       reader.readAsDataURL(file);
     }
   };
 
+  const handleFastCartoonize = async () => {
+    if (!originalImage || isCartoonizing) return;
+    setIsCartoonizing(true);
+    setCartoonizeStatus('快速处理中...');
+    
+    try {
+      const res = await fetch('/api/cartoonize/fast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: originalImage })
+      });
+      const data = await res.json();
+      if (data.result) {
+        setOriginalImage(data.result);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('极速版请求失败');
+    } finally {
+      setIsCartoonizing(false);
+      setCartoonizeStatus('');
+    }
+  };
+
+  const handleHighQualityCartoonize = async () => {
+    if (!originalImage || isCartoonizing) return;
+    setIsCartoonizing(true);
+    setCartoonizeProgress(0);
+    setCartoonizeStatus('排队中...');
+
+    try {
+      const res = await fetch('/api/cartoonize/high-quality', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_base64: originalImage })
+      });
+      const data = await res.json();
+      const taskId = data.task_id;
+
+      if (taskId) {
+        pollTaskStatus(taskId);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('高清版请求失败');
+      setIsCartoonizing(false);
+      setCartoonizeStatus('');
+    }
+  };
+
+  const pollTaskStatus = async (taskId: string) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`);
+      const data = await res.json();
+      
+      setCartoonizeStatus(data.status === 'PROCESSING' ? '生成中...' : '排队中...');
+      setCartoonizeProgress(data.progress || 0);
+
+      if (data.status === 'COMPLETED') {
+        if (data.result) {
+          setOriginalImage(data.result);
+        }
+        setIsCartoonizing(false);
+        setCartoonizeStatus('');
+        setCartoonizeProgress(0);
+      } else if (data.status === 'FAILED') {
+        alert('处理失败');
+        setIsCartoonizing(false);
+        setCartoonizeStatus('');
+      } else {
+        // Poll again after 1s
+        setTimeout(() => pollTaskStatus(taskId), 1000);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('轮询进度失败');
+      setIsCartoonizing(false);
+      setCartoonizeStatus('');
+    }
+  };
+
   const handleProcess = async () => {
-    if (!originalImage) return;
+    if (!originalImage || isCartoonizing) return;
     const currentPalette = palettes[selectedBrand] || palettes['Mard'];
     
     const result = await processImage(originalImage, scalePercentage, useDithering, currentPalette);
@@ -83,6 +170,53 @@ export default function UploadPanel() {
             className="hidden" 
           />
         </div>
+
+        {/* Cartoonize Styles Area */}
+        {originalImage && (
+          <div className="mt-4 p-4 bg-zinc-50 border border-zinc-200 rounded-xl space-y-3">
+            <h3 className="text-sm font-medium text-zinc-700 flex items-center gap-1.5">
+              <Wand2 className="w-4 h-4" /> 图像动漫化前置处理
+            </h3>
+            
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button 
+                onClick={handleFastCartoonize}
+                disabled={isCartoonizing}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-lg text-sm font-medium text-zinc-700 transition-colors disabled:opacity-50"
+                title="极速动漫化 (GAN)，约需 1 秒"
+              >
+                <Zap className="w-4 h-4 text-amber-500" />
+                快速动漫化
+              </button>
+              
+              <button 
+                onClick={handleHighQualityCartoonize}
+                disabled={isCartoonizing}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                title="精细插画化 (Diffusion)，需排队，画质极高"
+              >
+                <Sparkles className="w-4 h-4 text-purple-300" />
+                精细插画化
+              </button>
+            </div>
+
+            {/* Progress Bar for High Quality Cartoonize */}
+            {isCartoonizing && cartoonizeStatus && (
+              <div className="pt-2">
+                <div className="flex justify-between text-xs text-zinc-500 mb-1.5">
+                  <span>{cartoonizeStatus}</span>
+                  {cartoonizeProgress > 0 && <span>{cartoonizeProgress}%</span>}
+                </div>
+                <div className="w-full bg-zinc-200 rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className="bg-zinc-900 h-1.5 rounded-full transition-all duration-300 ease-out" 
+                    style={{ width: `${cartoonizeProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Settings Area */}
@@ -170,7 +304,7 @@ export default function UploadPanel() {
 
       <button 
         onClick={handleProcess}
-        disabled={!originalImage}
+        disabled={!originalImage || isCartoonizing}
         className="w-full py-3 bg-zinc-900 text-white font-medium rounded-xl hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         <ImageIcon className="w-4 h-4" />
