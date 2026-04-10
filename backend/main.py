@@ -52,52 +52,68 @@ def cv2_to_base64(img):
 
 def process_fast_cartoonize(img):
     """
-    OpenCV based fast cartoon filter.
+    OpenCV based fast cartoon filter, resolution independent.
     """
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h, w = img.shape[:2]
+    # Downscale for processing to make the filter size effective on large images
+    max_dim = 800
+    scale = max_dim / max(h, w)
+    
+    if scale < 1.0:
+        small_w, small_h = int(w * scale), int(h * scale)
+        work_img = cv2.resize(img, (small_w, small_h), interpolation=cv2.INTER_AREA)
+    else:
+        work_img = img
+
+    gray = cv2.cvtColor(work_img, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
     edges = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9)
-    color = cv2.bilateralFilter(img, 9, 300, 300)
+    color = cv2.bilateralFilter(work_img, 9, 300, 300)
     cartoon = cv2.bitwise_and(color, color, mask=edges)
+    
+    if scale < 1.0:
+        cartoon = cv2.resize(cartoon, (w, h), interpolation=cv2.INTER_CUBIC)
+        
     return cartoon
 
-def process_pixel_art(img, pixel_size=4, num_colors=16):
+def process_pixel_art(img, max_pixels=150, num_colors=12):
     """
-    OpenCV based pixel art cartoonization.
-    Downsamples the image, applies bilateral filter and k-means color quantization,
-    then upsamples it back using nearest neighbor interpolation.
+    OpenCV based pixel art cartoonization optimized for VERY large images.
+    By using max_pixels, we guarantee a strong, chunky pixel-art effect 
+    regardless of whether the input is 500px or 5000px wide.
     """
     h, w = img.shape[:2]
     
-    # 1. Downsample to create the pixelated base
-    small_w, small_h = w // pixel_size, h // pixel_size
-    if small_w == 0 or small_h == 0:
-        return img # Image too small to pixelate
+    # 1. Downsample dynamically based on max dimension
+    scale = max_pixels / max(h, w)
+    if scale >= 1.0:
+        small_w, small_h = w, h
+    else:
+        small_w, small_h = max(1, int(w * scale)), max(1, int(h * scale))
         
     small_img = cv2.resize(img, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
     
-    # 2. Smooth colors while preserving edges
-    smoothed = cv2.bilateralFilter(small_img, d=7, sigmaColor=75, sigmaSpace=75)
+    # 2. Smooth colors heavily (Mean Shift is perfect for flattening cartoon colors)
+    # Processing on a max 150px image is extremely fast.
+    smoothed = cv2.pyrMeanShiftFiltering(small_img, sp=10, sr=30)
     
-    # 3. Enhance edges
-    gray = cv2.cvtColor(smoothed, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 3)
-    edges = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blockSize=5, C=2
-    )
-    cartoon_small = cv2.bitwise_and(smoothed, smoothed, mask=edges)
-    
-    # 4. Color Quantization using K-Means
-    data = cartoon_small.reshape((-1, 3)).astype(np.float32)
+    # 3. Color Quantization using K-Means
+    data = smoothed.reshape((-1, 3)).astype(np.float32)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.001)
     _, labels, centers = cv2.kmeans(
         data, num_colors, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS
     )
     centers = np.uint8(centers)
-    quantized_small = centers[labels.flatten()].reshape(cartoon_small.shape)
+    quantized_small = centers[labels.flatten()].reshape(smoothed.shape)
     
-    # 5. Upsample back to original size using NEAREST to keep sharp pixel edges
-    pixel_art = cv2.resize(quantized_small, (w, h), interpolation=cv2.INTER_NEAREST)
+    # 4. Enhance edges (using Canny on quantized blocks gives perfect retro outlines)
+    gray = cv2.cvtColor(quantized_small, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+    edges_inv = cv2.bitwise_not(edges)
+    cartoon_small = cv2.bitwise_and(quantized_small, quantized_small, mask=edges_inv)
+    
+    # 5. Upsample back to original size using NEAREST to keep the sharp mosaic edges
+    pixel_art = cv2.resize(cartoon_small, (w, h), interpolation=cv2.INTER_NEAREST)
     
     return pixel_art
 
@@ -118,8 +134,8 @@ def simulate_diffusion_task(task_id: str, image_base64: str):
                 logger.info(f"Task {task_id}: Processing... {progress}%")
             
         logger.info(f"Task {task_id}: Applying OpenCV Pixel Art filters")
-        # Use the new pixel art function instead of the old HQ cartoonize
-        result_img = process_pixel_art(img, pixel_size=4, num_colors=16)
+        # Use the new pixel art function with adaptive resolution scaling
+        result_img = process_pixel_art(img, max_pixels=150, num_colors=12)
         
         logger.info(f"Task {task_id}: Encoding result to base64")
         result_base64 = cv2_to_base64(result_img)
