@@ -56,6 +56,16 @@ export default function UploadPanel() {
       const data = await res.json();
       if (data.result) {
         setOriginalImage(data.result);
+        
+        // Auto process the image to show updated preview
+        const currentPalette = palettes[selectedBrand] || palettes['Mard'];
+        const result = await processImage(data.result, scalePercentage, useDithering, currentPalette);
+        if (result) {
+          setPixelatedData(result.pixels);
+          setBeadCounts(result.counts);
+          setTargetWidth(result.width);
+          setTargetHeight(result.height);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -103,6 +113,16 @@ export default function UploadPanel() {
       if (data.status === 'COMPLETED') {
         if (data.result) {
           setOriginalImage(data.result);
+          
+          // Auto process the image to show updated preview
+          const currentPalette = palettes[selectedBrand] || palettes['Mard'];
+          const result = await processImage(data.result, scalePercentage, useDithering, currentPalette);
+          if (result) {
+            setPixelatedData(result.pixels);
+            setBeadCounts(result.counts);
+            setTargetWidth(result.width);
+            setTargetHeight(result.height);
+          }
         }
         setIsCartoonizing(false);
         setCartoonizeStatus('');
