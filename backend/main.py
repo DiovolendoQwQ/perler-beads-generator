@@ -61,28 +61,48 @@ def process_fast_cartoonize(img):
     cartoon = cv2.bitwise_and(color, color, mask=edges)
     return cartoon
 
-def process_hq_cartoonize(img):
+def process_pixel_art(img, pixel_size=4, num_colors=16):
     """
-    OpenCV based high quality cartoon filter (simulating more passes).
+    OpenCV based pixel art cartoonization.
+    Downsamples the image, applies bilateral filter and k-means color quantization,
+    then upsamples it back using nearest neighbor interpolation.
     """
-    # Stylization
-    styled = cv2.stylization(img, sigma_s=60, sigma_r=0.07)
+    h, w = img.shape[:2]
     
-    # Edges
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 7)
-    edges = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 2)
-    
-    # Color Smoothing
-    color = styled
-    for _ in range(2):
-        color = cv2.bilateralFilter(color, 9, 300, 300)
+    # 1. Downsample to create the pixelated base
+    small_w, small_h = w // pixel_size, h // pixel_size
+    if small_w == 0 or small_h == 0:
+        return img # Image too small to pixelate
         
-    cartoon = cv2.bitwise_and(color, color, mask=edges)
-    return cartoon
+    small_img = cv2.resize(img, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
+    
+    # 2. Smooth colors while preserving edges
+    smoothed = cv2.bilateralFilter(small_img, d=7, sigmaColor=75, sigmaSpace=75)
+    
+    # 3. Enhance edges
+    gray = cv2.cvtColor(smoothed, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 3)
+    edges = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blockSize=5, C=2
+    )
+    cartoon_small = cv2.bitwise_and(smoothed, smoothed, mask=edges)
+    
+    # 4. Color Quantization using K-Means
+    data = cartoon_small.reshape((-1, 3)).astype(np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.001)
+    _, labels, centers = cv2.kmeans(
+        data, num_colors, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS
+    )
+    centers = np.uint8(centers)
+    quantized_small = centers[labels.flatten()].reshape(cartoon_small.shape)
+    
+    # 5. Upsample back to original size using NEAREST to keep sharp pixel edges
+    pixel_art = cv2.resize(quantized_small, (w, h), interpolation=cv2.INTER_NEAREST)
+    
+    return pixel_art
 
 def simulate_diffusion_task(task_id: str, image_base64: str):
-    logger.info(f"Task {task_id}: Started high-quality cartoonization")
+    logger.info(f"Task {task_id}: Started pixel art cartoonization")
     mock_tasks[task_id] = {"status": "PROCESSING", "progress": 0, "result": None, "error": None}
     total_steps = 10
     
@@ -91,14 +111,15 @@ def simulate_diffusion_task(task_id: str, image_base64: str):
         img = base64_to_cv2(image_base64)
         
         for step in range(total_steps):
-            time.sleep(0.5) # Simulate GPU processing time (Wait 5s total)
+            time.sleep(0.2) # Simulate processing time
             progress = int(((step + 1) / total_steps) * 100)
             mock_tasks[task_id]["progress"] = progress
             if progress % 20 == 0:  # Log every 20%
                 logger.info(f"Task {task_id}: Processing... {progress}%")
             
-        logger.info(f"Task {task_id}: Applying OpenCV stylization filters")
-        result_img = process_hq_cartoonize(img)
+        logger.info(f"Task {task_id}: Applying OpenCV Pixel Art filters")
+        # Use the new pixel art function instead of the old HQ cartoonize
+        result_img = process_pixel_art(img, pixel_size=4, num_colors=16)
         
         logger.info(f"Task {task_id}: Encoding result to base64")
         result_base64 = cv2_to_base64(result_img)

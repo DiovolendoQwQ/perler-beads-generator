@@ -234,14 +234,14 @@ export default function UploadPanel() {
                 快速动漫化
               </button>
               
-              <button 
+              <button
                 onClick={handleHighQualityCartoonize}
                 disabled={isCartoonizing}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                title="精细插画化 (Diffusion)，需排队，画质极高"
+                title="像素风卡通化：平滑色彩、增强轮廓并减少颜色数"
               >
                 <Sparkles className="w-4 h-4 text-purple-300" />
-                精细插画化
+                像素卡通化
               </button>
             </div>
 
