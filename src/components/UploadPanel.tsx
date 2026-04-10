@@ -31,6 +31,8 @@ export default function UploadPanel() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pixelSize, setPixelSize] = useState<number>(8);
+  const [numColors, setNumColors] = useState<number>(12);
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,7 +96,11 @@ export default function UploadPanel() {
       const res = await fetch('/api/cartoonize/high-quality', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_base64: originalImage })
+        body: JSON.stringify({ 
+          image_base64: originalImage,
+          pixel_size: pixelSize,
+          num_colors: numColors
+        })
       });
       const data = await res.json();
       
@@ -243,6 +249,42 @@ export default function UploadPanel() {
                 <Sparkles className="w-4 h-4 text-purple-300" />
                 像素卡通化
               </button>
+            </div>
+
+            {/* Pixel Art Controls */}
+            <div className="pt-2 space-y-3 border-t border-zinc-200 mt-2">
+              <div className="space-y-1">
+                <label className="flex justify-between items-center text-xs font-medium text-zinc-600">
+                  <span>像素化程度 (块大小)</span>
+                  <span>{pixelSize}px</span>
+                </label>
+                <input
+                  type="range"
+                  min="2"
+                  max="32"
+                  step="2"
+                  value={pixelSize}
+                  onChange={(e) => setPixelSize(Number(e.target.value))}
+                  disabled={isCartoonizing}
+                  className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-600 disabled:opacity-50"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="flex justify-between items-center text-xs font-medium text-zinc-600">
+                  <span>最大色彩数量</span>
+                  <span>{numColors} 色</span>
+                </label>
+                <input
+                  type="range"
+                  min="4"
+                  max="32"
+                  step="2"
+                  value={numColors}
+                  onChange={(e) => setNumColors(Number(e.target.value))}
+                  disabled={isCartoonizing}
+                  className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-zinc-600 disabled:opacity-50"
+                />
+              </div>
             </div>
 
             {/* Progress Bar for High Quality Cartoonize */}

@@ -76,28 +76,24 @@ def process_fast_cartoonize(img):
         
     return cartoon
 
-def process_pixel_art(img, max_pixels=150, num_colors=12):
+def process_pixel_art(img, pixel_size=8, num_colors=12, edge_thickness=1):
     """
-    OpenCV based pixel art cartoonization optimized for VERY large images.
-    By using max_pixels, we guarantee a strong, chunky pixel-art effect 
-    regardless of whether the input is 500px or 5000px wide.
+    OpenCV based pixel art cartoonization.
+    Directly converts the image into a clean, flat-color pixel art style 
+    suitable for perler beads, without forcing a fixed small resolution.
     """
     h, w = img.shape[:2]
     
-    # 1. Downsample dynamically based on max dimension
-    scale = max_pixels / max(h, w)
-    if scale >= 1.0:
-        small_w, small_h = w, h
-    else:
-        small_w, small_h = max(1, int(w * scale)), max(1, int(h * scale))
-        
+    # 1. Dynamic Downsample (Pixelation effect)
+    # We calculate the downsample based on the pixel_size parameter (like a mosaic block size)
+    small_w, small_h = max(1, w // pixel_size), max(1, h // pixel_size)
     small_img = cv2.resize(img, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
     
-    # 2. Smooth colors heavily (Mean Shift is perfect for flattening cartoon colors)
-    # Processing on a max 150px image is extremely fast.
-    smoothed = cv2.pyrMeanShiftFiltering(small_img, sp=10, sr=30)
+    # 2. Smooth colors (Mean Shift)
+    # This groups similar colors into flat regions
+    smoothed = cv2.pyrMeanShiftFiltering(small_img, sp=15, sr=35)
     
-    # 3. Color Quantization using K-Means
+    # 3. Color Quantization using K-Means (Reduce palette)
     data = smoothed.reshape((-1, 3)).astype(np.float32)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.001)
     _, labels, centers = cv2.kmeans(
@@ -106,25 +102,36 @@ def process_pixel_art(img, max_pixels=150, num_colors=12):
     centers = np.uint8(centers)
     quantized_small = centers[labels.flatten()].reshape(smoothed.shape)
     
-    # 4. Enhance edges (using Canny on quantized blocks gives perfect retro outlines)
-    gray = cv2.cvtColor(quantized_small, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
-    edges_inv = cv2.bitwise_not(edges)
-    cartoon_small = cv2.bitwise_and(quantized_small, quantized_small, mask=edges_inv)
+    # 4. Optional Soft Edges (Using adaptive threshold instead of harsh Canny)
+    if edge_thickness > 0:
+        gray = cv2.cvtColor(smoothed, cv2.COLOR_BGR2GRAY)
+        gray = cv2.medianBlur(gray, 3)
+        edges = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, blockSize=7, C=3
+        )
+        # Dilate edges slightly to make them visible but not overwhelming
+        kernel = np.ones((edge_thickness, edge_thickness), np.uint8)
+        edges = cv2.erode(edges, kernel, iterations=1) # Erode because lines are black (0)
+        quantized_small = cv2.bitwise_and(quantized_small, quantized_small, mask=edges)
     
     # 5. Upsample back to original size using NEAREST to keep the sharp mosaic edges
-    pixel_art = cv2.resize(cartoon_small, (w, h), interpolation=cv2.INTER_NEAREST)
+    pixel_art = cv2.resize(quantized_small, (w, h), interpolation=cv2.INTER_NEAREST)
     
     return pixel_art
 
-def simulate_diffusion_task(task_id: str, image_base64: str):
-    logger.info(f"Task {task_id}: Started pixel art cartoonization")
+class HighQualityRequest(BaseModel):
+    image_base64: str
+    pixel_size: int = 8
+    num_colors: int = 12
+
+def simulate_diffusion_task(task_id: str, req: HighQualityRequest):
+    logger.info(f"Task {task_id}: Started pixel art cartoonization with size={req.pixel_size}, colors={req.num_colors}")
     mock_tasks[task_id] = {"status": "PROCESSING", "progress": 0, "result": None, "error": None}
     total_steps = 10
     
     try:
         logger.info(f"Task {task_id}: Decoding base64 image")
-        img = base64_to_cv2(image_base64)
+        img = base64_to_cv2(req.image_base64)
         
         for step in range(total_steps):
             time.sleep(0.2) # Simulate processing time
@@ -134,8 +141,8 @@ def simulate_diffusion_task(task_id: str, image_base64: str):
                 logger.info(f"Task {task_id}: Processing... {progress}%")
             
         logger.info(f"Task {task_id}: Applying OpenCV Pixel Art filters")
-        # Use the new pixel art function with adaptive resolution scaling
-        result_img = process_pixel_art(img, max_pixels=150, num_colors=12)
+        # Pass the dynamic parameters to the filter
+        result_img = process_pixel_art(img, pixel_size=req.pixel_size, num_colors=req.num_colors)
         
         logger.info(f"Task {task_id}: Encoding result to base64")
         result_base64 = cv2_to_base64(result_img)
@@ -172,7 +179,7 @@ async def cartoonize_fast(req: ImageRequest):
         raise HTTPException(status_code=500, detail=error_msg)
 
 @app.post("/api/cartoonize/high-quality")
-async def cartoonize_high_quality(req: ImageRequest, background_tasks: BackgroundTasks):
+async def cartoonize_high_quality(req: HighQualityRequest, background_tasks: BackgroundTasks):
     """
     Simulates Stable Diffusion inference via a simulated task queue,
     but performs an actual HQ cartoonization using OpenCV.
@@ -181,7 +188,7 @@ async def cartoonize_high_quality(req: ImageRequest, background_tasks: Backgroun
     logger.info(f"Received HIGH-QUALITY cartoonize request, generated Task ID: {task_id}")
     mock_tasks[task_id] = {"status": "PENDING", "progress": 0, "result": None, "error": None}
     
-    threading.Thread(target=simulate_diffusion_task, args=(task_id, req.image_base64)).start()
+    threading.Thread(target=simulate_diffusion_task, args=(task_id, req)).start()
     return {"task_id": task_id}
 
 @app.get("/api/tasks/{task_id}")
