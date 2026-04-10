@@ -40,7 +40,6 @@ export default function PreviewCanvas() {
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
   }, []);
-
   // Render the pixel data onto the canvas
   useEffect(() => {
     const canvas = canvasRef.current;
